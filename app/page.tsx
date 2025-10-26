@@ -23,6 +23,14 @@ const Home = () =>{
         console.log("Question submitted:", input)
         setInput("")
     }
+    const handlePrompt = (promptText) =>{
+        const msg: Message = {
+            id:crypto.randomUUID(),
+            content:
+            role: "user"
+        }
+        append(msg)
+    }
     return(
         <main>
             <Image src={epl} width={250} height={250} alt="EPL Logo" />
@@ -32,11 +40,11 @@ const Home = () =>{
                     <p className="starter-text"> The late to news place where you can ask about any Ethiopian Premier League quessstions, up to date and ready to answer.
                     </p>
                     <br/>
-                    {<PromptSuggestionRow/>}
+                    {<PromptSuggestionRow onPromptClick={onPromptClick}/>}
                     </>
                 ) : (
                     <>
-                        {noMessages.map((messages) => <Bubble key={`message-${index}`} message={message}/>)}
+                        {noMessages.map((message) => <Bubble key={`message-${index}`} message={message}/>)}
                         {isLoading && <LoadingBubble/>}
                     </>
                 )}

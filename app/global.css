@@ -73,6 +73,28 @@ input:focus{
     outline: none;
 }
 
+.bubble{
+    margin: 8px;
+    padding: 8px;
+    font-size: 15px;
+    border: none;
+    color: #383838;
+    box-shadow: #959da533 0 8px 24px;
+    width: 80%;
+    text-align: left;
+}
+
+.bubble.user{
+    border-radius: 20px 20px 0 20px;
+    background-color: #E1F4FFFF;
+    margin-left: auto;
+}
+
+.bubble.assistant{
+    border-radius: 20px 20px 20px 0;
+    background-color: #dce7ff;
+}
+
 .loader{
     margin:10px;
     width: 60px;
