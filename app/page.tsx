@@ -36,7 +36,7 @@ const Home = () =>{
                     </>
                 )}
             </section>
-                            <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit}>
                     <input
                         className="question-box"
                         onChange={handleInputChange}

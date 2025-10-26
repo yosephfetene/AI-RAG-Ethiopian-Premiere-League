@@ -23,7 +23,7 @@ main{
     flex-direction: column;
     padding: 20px;
     text-align: center;
-    color: #383838;
+    color: #ffffff;
 }
 
 section{
@@ -44,15 +44,15 @@ section.populated{
 
 form{
     height: 50px;
-    width: 100%;
+    width:100%;
     display: flex;
-    border: top #828282 2px solid;
+    border-top: #828282 2px solid;
     padding-top: 20px;
     border-radius: 0 0 10px 10px;
     overflow: hidden;
 }
 
-input.question-input{
+input.question-box{
     width: 85%;
     padding: 10px;
     font-size: 15px;
@@ -67,4 +67,8 @@ input[type = submit]{
     border: none;
     color: #fff;
     background-color: #411b8d;
+}
+
+input:focus{
+    outline: none;
 }
