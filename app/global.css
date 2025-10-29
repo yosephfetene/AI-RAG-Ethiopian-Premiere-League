@@ -95,6 +95,20 @@ input:focus{
     background-color: #dce7ff;
 }
 
+.prompt-suggestion-row{
+    width:100%;
+}
+.prompt-suggestion-button{
+    margin: 8px;
+    padding:8px;
+    font-size: 15px;
+    border: none;
+    background-color: #fff;
+    border-radius:10px;
+    color: #383838;
+    box-shadow: #959da533 0 8px 24px;
+}
+
 .loader{
     margin:10px;
     width: 60px;

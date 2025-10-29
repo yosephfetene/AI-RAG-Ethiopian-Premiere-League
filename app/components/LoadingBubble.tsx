@@ -1,7 +1,8 @@
-const LoadingBubble = () => {
-    return(
-        <div className="loader"></div>
-    )
-}
+// components/LoadingBubble.tsx
+import React from "react";
 
-export default LoadingBubble
+const LoadingBubble: React.FC = () => {
+  return <div className="loader" aria-hidden="true"></div>;
+};
+
+export default LoadingBubble;

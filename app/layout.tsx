@@ -1,9 +1,10 @@
-import './global.css';
-import React from 'react';
+// app/layout.tsx
+import "./global.css";
+import React from "react";
 
 export const metadata = {
-  title: 'epldata',
-  description: 'English Premier League Data',
+  title: "epldata",
+  description: "Ethiopian Premier League Data",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
