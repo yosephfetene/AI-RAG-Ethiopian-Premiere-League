@@ -1,10 +1,9 @@
-// app/layout.tsx
 import "./global.css";
 import React from "react";
 
 export const metadata = {
-  title: "epldata",
-  description: "Ethiopian Premier League Data",
+  title: "Ethiopian Premier League Chat",
+  description: "Ask anything about the Ethiopian Premier League",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

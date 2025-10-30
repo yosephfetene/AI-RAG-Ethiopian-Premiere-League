@@ -18,6 +18,7 @@ const starterPrompts = [
   "Who won the last Ethiopian Premier League season?",
   "Top goal scorers this season?",
   "Recent match results for Saint George FC",
+  "Famous teams in Ethiopian Premier League",
 ];
 
 export default function Home() {
@@ -36,7 +37,7 @@ export default function Home() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
@@ -57,17 +58,17 @@ export default function Home() {
 
       console.log("Response status:", res.status);
       
+      const data = await res.json();
+      
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+        throw new Error(data.answer || `HTTP error! status: ${res.status}`);
       }
 
-      const data = await res.json();
       console.log("Response data:", data);
 
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
-        content: data.answer ?? "Sorry, I couldn't generate a response.",
+        content: data.answer,
         role: "assistant",
       };
       append(assistantMsg);
@@ -77,7 +78,7 @@ export default function Home() {
       
       append({
         id: crypto.randomUUID(),
-        content: `Error: ${errorMessage}. Please check the console for details.`,
+        content: `Sorry, I encountered an error: ${errorMessage}`,
         role: "assistant",
       });
     } finally {

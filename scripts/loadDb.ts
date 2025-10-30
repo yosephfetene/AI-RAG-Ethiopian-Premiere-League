@@ -1,7 +1,7 @@
 // scripts/loadDb.ts
 import { DataAPIClient } from "@datastax/astra-db-ts";
 import { PlaywrightWebBaseLoader } from "@langchain/community/document_loaders/web/playwright";
-import { HfInference, FeatureExtractionOutput } from "@huggingface/inference";
+import { HfInference } from "@huggingface/inference";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import "dotenv/config";
 
@@ -21,12 +21,16 @@ const {
 } = process.env;
 
 if (!ASTRA_DB_APPLICATION_TOKEN || !ASTRA_DB_ENDPOINT || !ASTRA_DB_COLLECTION) {
-  console.warn("Missing Astra DB environment variables.");
+  throw new Error("Missing Astra DB environment variables.");
+}
+
+if (!HF_TOKEN) {
+  throw new Error("Missing HF_TOKEN environment variable.");
 }
 
 const hf = new HfInference(HF_TOKEN);
-const client = new DataAPIClient(ASTRA_DB_APPLICATION_TOKEN ?? "");
-const db = client.db(ASTRA_DB_ENDPOINT ?? "", { namespace: ASTRA_DB_NAMESPACE });
+const client = new DataAPIClient(ASTRA_DB_APPLICATION_TOKEN);
+const db = client.db(ASTRA_DB_ENDPOINT, { namespace: ASTRA_DB_NAMESPACE });
 
 const splitter = new RecursiveCharacterTextSplitter({
   chunkSize: 512,
@@ -37,8 +41,7 @@ const eplUrls = [
   "https://en.wikipedia.org/wiki/Ethiopian_Premier_League",
   "https://www.transfermarkt.com/ethiopian-premier-league/startseite/wettbewerb/ETP1",
   "https://soccerleagues.fandom.com/wiki/Ethiopian_Premier_League",
-  "https://en.wikipedia.org/wiki/Ethiopian_Premier_League#Top_goalscorer_by_season",
-  "https://en.wikipedia.org/wiki/Ethiopian_Premier_League#All-Time_Single_Season_Top_Goal_Scorers",
+  "https://www.thereporterethiopia.com/47157/",
 ];
 
 const MAX_PAGES = Number(process.env.SEED_MAX_PAGES ?? 2);
@@ -74,13 +77,18 @@ async function retryOp<T>(op: () => Promise<T>, attempts = 3, initialDelay = 100
 const createCollection = async (similarityMetric: SimilarityMetric = "dot_product") => {
   const maxAttempts = 3;
   const perRequestTimeout = 120000;
+  
+  // Use 384 dimensions for all-MiniLM-L6-v2 model
+  const VECTOR_DIMENSION = 384;
+  
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const res = await db.createCollection(ASTRA_DB_COLLECTION, {
         vector: {
-          dimension: 1536,
+          dimension: VECTOR_DIMENSION,
           metric: similarityMetric,
         },
+        checkExists: false,
         maxTimeMS: perRequestTimeout,
       });
       console.log("createCollection result:", res);
@@ -88,7 +96,15 @@ const createCollection = async (similarityMetric: SimilarityMetric = "dot_produc
     } catch (err: unknown) {
       const msg = getErrMsg(err);
       const isTimeout = msg.toLowerCase().includes("timed out") || msg.toLowerCase().includes("timeout");
+      const isCollectionExists = msg.toLowerCase().includes("already exists");
+      
       console.warn(`createCollection attempt ${attempt} failed: ${msg}`);
+      
+      if (isCollectionExists) {
+        console.log("Collection already exists, continuing...");
+        return;
+      }
+      
       if (isTimeout && attempt < maxAttempts) {
         const backoff = attempt * 2000;
         console.log(`Retrying createCollection in ${backoff}ms (attempt ${attempt + 1}/${maxAttempts})`);
@@ -101,40 +117,61 @@ const createCollection = async (similarityMetric: SimilarityMetric = "dot_produc
 };
 
 const scrapePage = async (url: string): Promise<string> => {
-  const loader = new PlaywrightWebBaseLoader(url, {
-    launchOptions: { headless: true },
-    gotoOptions: { waitUntil: "domcontentloaded" },
-    evaluate: async (page, browser) => {
-      const result = await page.evaluate(() => document.body.innerText);
-      await browser.close();
-      return result;
-    },
-  });
+  try {
+    const loader = new PlaywrightWebBaseLoader(url, {
+      launchOptions: { headless: true },
+      gotoOptions: { waitUntil: "domcontentloaded" },
+    });
 
-  const scraped = await loader.scrape();
-  return (scraped ?? "").replace(/<[^>]*>?/gm, "|");
+    const docs = await loader.load();
+    const content = docs.map(doc => doc.pageContent).join("\n");
+    return content.replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim();
+  } catch (error) {
+    console.error(`Error scraping ${url}:`, error);
+    return "";
+  }
 };
 
-const extractVectorFromResponse = (response: FeatureExtractionOutput): number[] => {
+const extractVectorFromResponse = (response: any): number[] => {
+  console.log("Raw embedding response type:", typeof response);
+  
   if (Array.isArray(response)) {
-    // Handle array response
+    // If it's a nested array, take the first element
     if (Array.isArray(response[0])) {
       return response[0] as number[];
     }
-    return response as number[];
+    // If it's a flat array of numbers, return it directly
+    if (response.length > 0 && typeof response[0] === 'number') {
+      return response as number[];
+    }
   }
   
   // Handle object response with data property
-  if (response && typeof response === 'object' && 'data' in response) {
-    const data = (response as any).data;
-    if (Array.isArray(data) && Array.isArray(data[0])) {
-      return data[0] as number[];
+  if (response && typeof response === 'object') {
+    if ('data' in response) {
+      const data = response.data;
+      if (Array.isArray(data)) {
+        if (Array.isArray(data[0])) {
+          return data[0] as number[];
+        }
+        return data as number[];
+      }
     }
-    return data as number[];
+    // Try to find any array property
+    for (const key in response) {
+      if (Array.isArray(response[key]) && response[key].length > 0) {
+        const arr = response[key];
+        if (Array.isArray(arr[0])) {
+          return arr[0] as number[];
+        } else if (typeof arr[0] === 'number') {
+          return arr as number[];
+        }
+      }
+    }
   }
   
-  // Fallback: try to cast as number array
-  return response as unknown as number[];
+  console.error("Unexpected embedding response format:", response);
+  throw new Error("Failed to extract vector from embedding response");
 };
 
 const loadSampleData = async (): Promise<void> => {
@@ -145,47 +182,62 @@ const loadSampleData = async (): Promise<void> => {
   for (const url of eplUrls) {
     if (MAX_PAGES && pagesProcessed >= MAX_PAGES) break;
     console.log(`Processing page: ${url}`);
+    
     const content = await scrapePage(url);
+    if (!content) {
+      console.log(`No content scraped from ${url}, skipping...`);
+      continue;
+    }
+
     const chunks = await splitter.splitText(content);
+    console.log(`Split into ${chunks.length} chunks`);
 
     let chunksProcessed = 0;
     for (const chunk of chunks) {
       if (MAX_CHUNKS_PER_PAGE && chunksProcessed >= MAX_CHUNKS_PER_PAGE) break;
+      if (chunk.length < 10) continue; // Skip very short chunks
 
-      const response = await retryOp(
-        () =>
-          hf.featureExtraction({
-            model: "sentence-transformers/all-MiniLM-L6-v2",
-            inputs: chunk,
-          }),
-        3,
-        2000
-      );
+      try {
+        const response = await retryOp(
+          () =>
+            hf.featureExtraction({
+              model: "sentence-transformers/all-MiniLM-L6-v2",
+              inputs: chunk,
+            }),
+          3,
+          2000
+        );
 
-      const vector = extractVectorFromResponse(response);
+        const vector = extractVectorFromResponse(response);
+        console.log(`Generated vector of dimension: ${vector.length}`);
 
-      const VECTOR_DIM = 1536;
-      const safeVector =
-        vector.length >= VECTOR_DIM
-          ? vector.slice(0, VECTOR_DIM)
-          : vector.concat(new Array(VECTOR_DIM - vector.length).fill(0));
+        // all-MiniLM-L6-v2 produces 384-dimensional vectors
+        const VECTOR_DIM = 384;
+        const safeVector =
+          vector.length >= VECTOR_DIM
+            ? vector.slice(0, VECTOR_DIM)
+            : [...vector, ...new Array(VECTOR_DIM - vector.length).fill(0)];
 
-      await retryOp(
-        () =>
-          collection.insertOne({
-            content: chunk,
-            vector: safeVector,
-          }),
-        3,
-        1000
-      );
+        await retryOp(
+          () =>
+            collection.insertOne({
+              content: chunk,
+              vector: safeVector,
+            }),
+          3,
+          1000
+        );
 
-      chunksProcessed++;
-      totalInserted++;
-      if (totalInserted % 10 === 0) console.log(`Inserted ${totalInserted} documents so far`);
+        chunksProcessed++;
+        totalInserted++;
+        if (totalInserted % 5 === 0) console.log(`Inserted ${totalInserted} documents so far`);
+      } catch (error) {
+        console.error(`Error processing chunk:`, error);
+      }
     }
 
     pagesProcessed++;
+    console.log(`Completed page ${pagesProcessed}/${eplUrls.length}`);
   }
 
   console.log(`Seeding complete. Pages processed: ${pagesProcessed}, documents inserted: ${totalInserted}`);
@@ -193,15 +245,17 @@ const loadSampleData = async (): Promise<void> => {
 
 (async (): Promise<void> => {
   try {
+    console.log("Starting database seeding...");
+    
+    // Wait a bit for database to be ready if it was resuming
+    await sleep(5000);
+    
     await createCollection();
+    await loadSampleData();
+    
+    console.log("Database seeding completed successfully!");
   } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'name' in err && err.name === "CollectionAlreadyExistsError") {
-      console.log("Collection already exists, continuing to load data...");
-    } else {
-      console.error("createCollection failed:", err);
-      throw err;
-    }
+    console.error("Seeding failed:", err);
+    process.exit(1);
   }
-
-  await loadSampleData();
 })();
